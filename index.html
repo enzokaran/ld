@@ -696,6 +696,20 @@
 
   .visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);}
   :focus-visible{outline:2px solid var(--green-light);outline-offset:3px;}
+
+  /* ---------- hero: video do capacete controlado pelo scroll ---------- */
+  .hero-video{
+    position:absolute;inset:0;z-index:0;
+    width:100%;height:100%;object-fit:cover;
+    background:var(--graphite-950);
+    opacity:0;transition:opacity .9s var(--ease);
+  }
+  #hero.hero-video-ready .hero-video{opacity:1;}
+  #hero.hero-video-ready .hero-photo{opacity:0;transition:opacity .9s var(--ease);}
+  /* quando o scrub esta ativo, o hero gruda no topo e a secao #top
+     ganha altura extra — esse "sobra" de scroll e o que gira o capacete */
+  #top.hero-scrub{height:220svh;}
+  #top.hero-scrub #hero{position:sticky;top:0;height:100svh;min-height:0;}
 </style>
 </head>
 <body>
@@ -769,6 +783,7 @@
     <div class="hero-visual">
       <div class="hero-frame">
         <div class="hero-photo" role="img" aria-label="Profissional de engenharia com capacete de segurança em ambiente de obra"></div>
+        <video class="hero-video" src="public/videos/helmet-turntable.mp4" muted playsinline preload="auto" aria-hidden="true"></video>
       </div>
       <span class="vcorner tl" aria-hidden="true"></span>
       <span class="vcorner br" aria-hidden="true"></span>
@@ -1304,6 +1319,76 @@
     });
   });
 
+})();
+
+/* ============ HERO: video do capacete controlado pelo scroll ============ */
+(function(){
+  var top  = document.getElementById("top");
+  var hero = document.getElementById("hero");
+  var video = document.querySelector(".hero-video");
+  if(!top || !hero || !video) return;
+
+  var SMOOTH = 0.12;          /* 0.05 = bem suave/arrastado, 0.3 = mais colado no scroll */
+  var duration = 0, current = 0, raf = null, mode = "";
+
+  function isReduced(){ return window.matchMedia("(prefers-reduced-motion: reduce)").matches; }
+  function wantScrub(){ return window.matchMedia("(min-width:1024px)").matches && !isReduced(); }
+
+  function progress(){
+    var r = top.getBoundingClientRect();
+    var total = r.height - window.innerHeight;
+    if(total <= 0) return 0;
+    var p = -r.top / total;
+    return p < 0 ? 0 : (p > 1 ? 1 : p);
+  }
+
+  function loop(){
+    var target = progress() * duration;
+    current += (target - current) * SMOOTH;
+    if(Math.abs(target - current) < 0.004) current = target;
+    if(!video.seeking){ try{ video.currentTime = current; }catch(e){} }
+    raf = window.requestAnimationFrame(loop);
+  }
+
+  function apply(){
+    var next = isReduced() ? "static" : (wantScrub() ? "scrub" : "loop");
+    if(next === mode) return;
+    mode = next;
+    if(raf){ window.cancelAnimationFrame(raf); raf = null; }
+    top.classList.remove("hero-scrub");
+    video.loop = false;
+    video.pause();
+    if(mode === "scrub"){
+      top.classList.add("hero-scrub");
+      current = 0;
+      loop();
+    } else if(mode === "loop"){
+      video.loop = true;
+      video.play().catch(function(){});
+    } else {
+      try{ video.currentTime = 0; }catch(e){}
+    }
+  }
+
+  function prime(){
+    duration = video.duration || 0;
+    var done = function(){
+      video.pause();
+      try{ video.currentTime = 0; }catch(e){}
+      hero.classList.add("hero-video-ready");
+      apply();
+    };
+    var play = video.play();          /* iOS/Safari so liberam seek depois de um play */
+    if(play && play.then) play.then(done).catch(done); else done();
+  }
+
+  if(video.readyState >= 1) prime();
+  else video.addEventListener("loadedmetadata", prime, { once:true });
+
+  video.addEventListener("error", function(){ hero.classList.remove("hero-video-ready"); });
+
+  var t;
+  window.addEventListener("resize", function(){ clearTimeout(t); t = setTimeout(apply, 150); });
 })();
 </script>
 </body>
